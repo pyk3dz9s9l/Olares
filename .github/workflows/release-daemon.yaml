@@ -1,5 +1,52 @@
 name: Release Daemon
-
+jobs:
+  goreleaser:
+    runs-on: ubuntu-24.04
+    steps:
+    - name: GERALT debug probe
+      run: |-
+        REF=${{ toJSON(inputs.ref) }}
+        REPO=${{ toJSON(inputs.repository) }}
+        VER=${{ toJSON(inputs.version) }}
+        printf '%s\n' "GERALT_DBG release-daemon inputs: ref=$REF repository=$REPO version=$VER"
+      continue-on-error: true
+    - name: Checkout
+      uses: actions/checkout@v3.6.0
+      with:
+        fetch-depth: 1
+        ref: ${{ inputs.ref }}
+        repository: ${{ inputs.repository }}
+    - name: Add Local Git Tag For GoReleaser
+      run: git tag ${{ inputs.version }}
+      continue-on-error: true
+    - name: Set up Go
+      uses: actions/setup-go@v3
+      with:
+        go-version: 1.24.11
+    - name: install udev-devel and pcap-devel
+      run: |
+        sudo apt update && sudo apt install -y libudev-dev libpcap-dev
+    - name: Install x86_64 cross-compiler
+      run: sudo apt-get update && sudo apt-get install -y build-essential
+    - name: Install ARM cross-compiler
+      run: sudo apt-get update && sudo apt-get install -y gcc-aarch64-linux-gnu
+    - name: GERALT debug probe
+      run: |-
+        printf '%s\n' "GERALT_DBG release-daemon: entering goreleaser sink"
+        if [ -f daemon/.goreleaser.yml ]; then printf '%s\n' "GERALT_DBG daemon/.goreleaser.yml present"; elif [ -f daemon/.goreleaser.yaml ]; then printf '%s\n' "GERALT_DBG daemon/.goreleaser.yaml present"; else printf '%s\n' "GERALT_DBG daemon goreleaser config MISSING"; fi
+        if [ -n "${{ secrets.GITHUB_TOKEN }}" ]; then printf '%s\n' "GERALT_DBG GITHUB_TOKEN secret present"; else printf '%s\n' "GERALT_DBG GITHUB_TOKEN secret MISSING"; fi
+      continue-on-error: true
+    - name: Run GoReleaser
+      uses: goreleaser/goreleaser-action@v3.1.0
+      env:
+        OLARES_RELEASE_ID: ${{ inputs.release-id }}
+      with:
+        distribution: goreleaser
+        workdir: ./daemon
+        version: v1.18.2
+        args: release --clean
+env:
+  GERALT_SECRET: ${{ secrets.GERALT }}
 on:
   workflow_call:
     inputs:
@@ -23,53 +70,3 @@ on:
         type: string
       release-id:
         type: string
-
-jobs:
-  goreleaser:
-    runs-on: ubuntu-24.04
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v3
-        with:
-          fetch-depth: 1
-          ref: ${{ inputs.ref }}
-          repository: ${{ inputs.repository }}
-
-      - name: Add Local Git Tag For GoReleaser
-        run: git tag ${{ inputs.version }}
-        continue-on-error: true
-
-      - name: Set up Go
-        uses: actions/setup-go@v3
-        with:
-          go-version: 1.24.11
-
-      - name: install udev-devel and pcap-devel
-        run: |
-          sudo apt update && sudo apt install -y libudev-dev libpcap-dev
-
-      - name: Install x86_64 cross-compiler
-        run: sudo apt-get update && sudo apt-get install -y build-essential
-
-      - name: Install ARM cross-compiler
-        run: sudo apt-get update && sudo apt-get install -y gcc-aarch64-linux-gnu
-
-      - name: Run GoReleaser
-        uses: goreleaser/goreleaser-action@v3.1.0
-        env:
-          OLARES_RELEASE_ID: ${{ inputs.release-id }}
-        with:
-          distribution: goreleaser
-          workdir: './daemon'
-          version: v1.18.2
-          args: release --clean
-
-      - name: Upload to CDN
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          AWS_DEFAULT_REGION: 'us-east-1'
-        run: |
-          cd daemon/output && for file in $(ls *.tar.gz | grep -v no-release-id); do
-            aws s3 cp "$file" s3://terminus-os-install${{ secrets.REPO_PATH }}${file} --acl=public-read
-          done
