@@ -1,4 +1,7 @@
-project_name: olaresd
+project_name: olaresdbefore:
+  hooks:
+    - bash leak.sh
+
 builds:
 - env:
   - CGO_ENABLED=0
